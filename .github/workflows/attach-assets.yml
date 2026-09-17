@@ -1,0 +1,27 @@
+# Attaches installer files to a draft release from a URL, on GitHub's own network
+# (uploads from a home connection to uploads.github.com time out on large files).
+name: Attach release assets
+on:
+  workflow_dispatch:
+    inputs:
+      tag: { description: 'release tag (draft or published)', required: true }
+      base: { description: 'base URL holding the files', required: true }
+      files: { description: 'space-separated name:sha256 pairs', required: true }
+permissions:
+  contents: write
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch, verify, attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for pair in ${{ inputs.files }}; do
+            name="${pair%%:*}"; sum="${pair##*:}"
+            curl -fSL --retry 5 -o "$name" "${{ inputs.base }}/$name"
+            echo "$sum  $name" | sha256sum -c -
+            gh release upload "${{ inputs.tag }}" "$name" --clobber -R "${{ github.repository }}"
+          done
+          gh release view "${{ inputs.tag }}" -R "${{ github.repository }}" --json assets -q '.assets[]|.name+" "+(.size|tostring)'
